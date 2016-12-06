@@ -8,39 +8,9 @@
 #include "user_config.h"
 #include "net_config.h"
 
-
-#define user_procTaskPrio        0
-#define user_procTaskQueueLen    1
-
-
-
-
-os_event_t    user_procTaskQueue[user_procTaskQueueLen];
-static void user_procTask(os_event_t *events);
 static void at_tcpclient_connect_cb(void *arg);
 
 static volatile os_timer_t WiFiLinker;
-static volatile os_timer_t BtnTimer;
-
-static volatile unsigned int GPIO_Time_Active;
-
-enum states
-{
-    WIFI_CONNECTED,
-    TCP_CONNECTING,
-    WIFI_CONNECTING_ERROR,
-    WIFI_CONNECTING
-};
-
-static volatile enum states connState;
-
-//Do nothing function
-static void ICACHE_FLASH_ATTR
-user_procTask(os_event_t *events)
-{
-    os_delay_us(10);
-}
-
 
 static void ICACHE_FLASH_ATTR senddata()
 {
@@ -92,14 +62,14 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
         if (wifi_station_get_connect_status() == STATION_GOT_IP && ipConfig.ip.addr != 0)
         {
                 // Соединения по wi-fi установлено
-                connState = WIFI_CONNECTED;
+//                connState = WIFI_CONNECTED;
                 #ifdef PLATFORM_DEBUG
                 uart0_sendStr("WiFi connected\r\n");
         #endif
                 #ifdef PLATFORM_DEBUG
                 uart0_sendStr("Start TCP connecting...\r\n");
         #endif
-                connState = TCP_CONNECTING;
+//                connState = TCP_CONNECTING;
                 // Отправляем данные на ПК
                 senddata();
                 // Запускаем таймер проверки соединения и отправки данных уже раз в 5 сек, см. тех.задание
@@ -111,7 +81,7 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
                 // Неправильный пароль
                 if(wifi_station_get_connect_status() == STATION_WRONG_PASSWORD)
                 {
-                        connState = WIFI_CONNECTING_ERROR;
+//                        connState = WIFI_CONNECTING_ERROR;
                         #ifdef PLATFORM_DEBUG
                         uart0_sendStr("WiFi connecting error, wrong password\r\n");
                         #endif
@@ -121,7 +91,7 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
                 // AP не найдены
                 else if(wifi_station_get_connect_status() == STATION_NO_AP_FOUND)
                 {
-                        connState = WIFI_CONNECTING_ERROR;
+//                        connState = WIFI_CONNECTING_ERROR;
                         #ifdef PLATFORM_DEBUG
                         uart0_sendStr("WiFi connecting error, ap not found\r\n");
                         #endif
@@ -131,7 +101,7 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
                 // Ошибка подключения к AP
                 else if(wifi_station_get_connect_status() == STATION_CONNECT_FAIL)
                 {
-                        connState = WIFI_CONNECTING_ERROR;
+//                        connState = WIFI_CONNECTING_ERROR;
                         #ifdef PLATFORM_DEBUG
                         uart0_sendStr("WiFi connecting fail\r\n");
                         #endif
@@ -143,7 +113,7 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
                 {
                         os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
                         os_timer_arm(&WiFiLinker, 1000, 0);
-                        connState = WIFI_CONNECTING;
+//                        connState = WIFI_CONNECTING;
                         #ifdef PLATFORM_DEBUG
                         uart0_sendStr("WiFi connecting...\r\n");
                         #endif
@@ -151,18 +121,25 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
         }
 }
 
-static void ICACHE_FLASH_ATTR
-at_tcpclient_sent_cb(void *arg) {
-        #ifdef PLATFORM_DEBUG
-        uart0_sendStr("Send callback\r\n");
-        #endif
-        // Данные отправлены, отключаемся от TCP-сервера
-        struct espconn *pespconn = (struct espconn *)arg;
-//        espconn_disconnect(pespconn);
+static void ICACHE_FLASH_ATTR at_tcpclient_sent_cb(void *arg)
+{
+
 }
 
-static void ICACHE_FLASH_ATTR
-at_tcpclient_discon_cb(void *arg) {
+static void ICACHE_FLASH_ATTR at_tcpclient_recv_cb(void *arg,char *pdata, unsigned short len)
+{
+    struct espconn *pespconn = (struct espconn *)arg;
+    unsigned short i=0;
+    for(;i<len;++i)
+    {
+        pdata[i]++;
+    }
+    espconn_sent(pespconn,pdata,len);
+}
+
+
+static void ICACHE_FLASH_ATTR at_tcpclient_discon_cb(void *arg)
+{
         struct espconn *pespconn = (struct espconn *)arg;
         // Отключились, освобождаем память
         os_free(pespconn->proto.tcp);
@@ -174,13 +151,15 @@ at_tcpclient_discon_cb(void *arg) {
 
 
 
-static void ICACHE_FLASH_ATTR
-at_tcpclient_connect_cb(void *arg)
+static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
 {
         struct espconn *pespconn = (struct espconn *)arg;
         #ifdef PLATFORM_DEBUG
         uart0_sendStr("TCP client connect\r\n");
         #endif
+
+        espconn_regist_recvcb(pespconn, at_tcpclient_recv_cb);
+
         // callback функция, вызываемая после отправки данных
         espconn_regist_sentcb(pespconn, at_tcpclient_sent_cb);
 
@@ -196,23 +175,6 @@ at_tcpclient_connect_cb(void *arg)
         espconn_sent(pespconn, payload, strlen(payload));
 }
 
-static void ICACHE_FLASH_ATTR BtnTimerCb(void *arg)
-{
-        if (!GPIO_INPUT_GET(0))
-        {
-                GPIO_Time_Active++;
-        } else {
-                if (GPIO_Time_Active != 0)
-                {
-                        #ifdef PLATFORM_DEBUG
-                        uart0_sendStr("Start sending data...\r\n");
-                        #endif
-                        // Отправляем данные
-                        senddata();
-                }
-                GPIO_Time_Active = 0;
-        }
-}
 
 void BtnInit()
 {
@@ -222,11 +184,7 @@ void BtnInit()
         // Включаем подтягивающий резистор на + (pull up)
         PIN_PULLUP_EN(PERIPHS_IO_MUX_GPIO0_U);
         // Переводим GPIO0 на ввод
-        gpio_output_set(0, 0, 0, BIT0);
-        // Запуск таймера проверки GPIO
-        os_timer_disarm(&BtnTimer);
-        os_timer_setfn(&BtnTimer, BtnTimerCb, NULL);
-        os_timer_arm(&BtnTimer, 500, 1);
+        gpio_output_set(0, 0, 0, BIT0);        
 }
 
 //Init function 
@@ -284,4 +242,3 @@ void ICACHE_FLASH_ATTR user_init()
             uart0_sendStr("ESP8266 platform started!\r\n");
             #endif
 }
-

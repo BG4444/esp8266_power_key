@@ -130,11 +130,43 @@ static void ICACHE_FLASH_ATTR at_tcpclient_recv_cb(void *arg,char *pdata, unsign
 {
     struct espconn *pespconn = (struct espconn *)arg;
     unsigned short i=0;
+    bool on;
+    bool mode=false;
     for(;i<len;++i)
     {
-        pdata[i]++;
+        switch(pdata[i]++)
+        {
+            case '1':
+            {
+                mode=true;
+                on=true;
+                break;
+            }
+            case '2':
+            {
+                mode=true;
+                on=false;
+                break;
+            }
+        }
+    }
+    if(!mode)
+    {
+        return;
     }
     espconn_sent(pespconn,pdata,len);
+    if (on)
+
+    {
+        //Set GPIO2 to HIGH
+        gpio_output_set(BIT2, 0, BIT2, 0);
+    }
+    else
+    {
+            //Set GPIO2 to LOW
+            gpio_output_set(0, BIT2, BIT2, 0);
+    }
+
 }
 
 
@@ -178,13 +210,12 @@ static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
 
 void BtnInit()
 {
-        PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0);
-        // Выключаем подтягивающий резистор на - (pull down)
-        PIN_PULLDWN_DIS(PERIPHS_IO_MUX_GPIO0_U);
-        // Включаем подтягивающий резистор на + (pull up)
-        PIN_PULLUP_EN(PERIPHS_IO_MUX_GPIO0_U);
-        // Переводим GPIO0 на ввод
-        gpio_output_set(0, 0, 0, BIT0);        
+    //Set GPIO2 to output mode
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);
+
+    //Set GPIO2 low
+    gpio_output_set(0, BIT2, BIT2, 0);
+
 }
 
 //Init function 

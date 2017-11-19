@@ -12,6 +12,10 @@ static void at_tcpclient_connect_cb(void *arg);
 
 static volatile os_timer_t WiFiLinker;
 
+static volatile unsigned int nTicks=0;
+static volatile unsigned int nClients=0;
+bool connected=false;
+
 static void ICACHE_FLASH_ATTR senddata()
 {
         char info[150];
@@ -26,32 +30,22 @@ static void ICACHE_FLASH_ATTR senddata()
         }
         pCon->type = ESPCONN_TCP;
         pCon->state = ESPCONN_NONE;
-        // Задаем адрес TCP-сервера, куда будем отправлять данные
-        os_sprintf(tcpserverip, "%s", TCPSERVERIP);
-        uint32_t ip = ipaddr_addr(tcpserverip);
         pCon->proto.tcp = (esp_tcp *)os_zalloc(sizeof(esp_tcp));
-        pCon->proto.tcp->local_port = espconn_port();
-        // Задаем порт TCP-сервера, куда будем отправлять данные
-        pCon->proto.tcp->remote_port = TCPSERVERPORT;
-        os_memcpy(pCon->proto.tcp->remote_ip, &ip, 4);
-        // Регистрируем callback функцию, вызываемую при установки соединения
+        pCon->proto.tcp->local_port = 23;
         espconn_regist_connectcb(pCon, at_tcpclient_connect_cb);
         // Можно зарегистрировать callback функцию, вызываемую при реконекте, но нам этого пока не нужно
         //espconn_regist_reconcb(pCon, at_tcpclient_recon_cb);
         // Вывод отладочной информации
-        #ifdef PLATFORM_DEBUG
-        os_sprintf(info,"Start espconn_connect to " IPSTR ":%d\r\n",
-                   IP2STR(pCon->proto.tcp->remote_ip),
-                   pCon->proto.tcp->remote_port);
-        uart0_sendStr(info);
-        #endif
         // Установить соединение с TCP-сервером
-        espconn_connect(pCon);
+        espconn_accept(pCon);
+        espconn_regist_time(pCon, 60*60, 0);
 }
+
 
 
 static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 {
+        ++nTicks;
         // Структура с информацией о полученном, ip адресе клиента STA, маске подсети, шлюзе.
         struct ip_info ipConfig;
         // Отключаем таймер проверки wi-fi
@@ -69,15 +63,19 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
                 #ifdef PLATFORM_DEBUG
                 uart0_sendStr("Start TCP connecting...\r\n");
         #endif
-//                connState = TCP_CONNECTING;
-                // Отправляем данные на ПК
-                senddata();
+
+                if(!connected)
+                {
+                    senddata();
+                }
+                connected=true;
                 // Запускаем таймер проверки соединения и отправки данных уже раз в 5 сек, см. тех.задание
                 os_timer_setfn(&WiFiLinker, (os_timer_func_t *)wifi_check_ip, NULL);
                 os_timer_arm(&WiFiLinker, 5000, 0);
         }
         else
         {
+                connected=false;
                 // Неправильный пароль
                 if(wifi_station_get_connect_status() == STATION_WRONG_PASSWORD)
                 {
@@ -159,12 +157,14 @@ static void ICACHE_FLASH_ATTR at_tcpclient_recv_cb(void *arg,char *pdata, unsign
 
     {
         //Set GPIO2 to HIGH
-        gpio_output_set(BIT2, 0, BIT2, 0);
+        gpio_output_set(BIT1, 0, BIT1, 0);
+        gpio_output_set(0, BIT3, BIT3, 0);
     }
     else
     {
             //Set GPIO2 to LOW
-            gpio_output_set(0, BIT2, BIT2, 0);
+            gpio_output_set(0, BIT1, BIT1, 0);
+            gpio_output_set(BIT3, 0, BIT3, 0);
     }
 
 }
@@ -174,11 +174,13 @@ static void ICACHE_FLASH_ATTR at_tcpclient_discon_cb(void *arg)
 {
         struct espconn *pespconn = (struct espconn *)arg;
         // Отключились, освобождаем память
-        os_free(pespconn->proto.tcp);
+       // os_free(pespconn->proto.tcp);
         os_free(pespconn);
         #ifdef PLATFORM_DEBUG
         uart0_sendStr("Disconnect callback\r\n");
         #endif
+
+        --nClients;
 }
 
 
@@ -197,9 +199,10 @@ static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
 
         // callback функция, вызываемая после отключения
         espconn_regist_disconcb(pespconn, at_tcpclient_discon_cb);
-        char payload[128];
+        char payload[512];
+        ++nClients;
         // Подготавливаем строку данных, будем отправлять MAC адрес ESP8266 в режиме AP и добавим к нему строку ESP8266
-        os_sprintf(payload, ",%s\r\n",  "ESP8266");
+        os_sprintf(payload, "TIME: %ld ncients: %ld LinkCnt: %ld\r\n", nTicks, nClients, pespconn->link_cnt                   );
         #ifdef PLATFORM_DEBUG
         uart0_sendStr(payload);
         #endif
@@ -211,16 +214,18 @@ static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
 void BtnInit()
 {
     //Set GPIO2 to output mode
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0TXD_U, FUNC_GPIO1);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_U0RXD_U, FUNC_GPIO3);
 
     //Set GPIO2 low
-    gpio_output_set(0, BIT2, BIT2, 0);
+    gpio_output_set(0, BIT1, BIT1, 0);
+    gpio_output_set(0, BIT3, BIT3, 0);
 
 }
 
 //Init function 
 void ICACHE_FLASH_ATTR user_init()
-{    
+{
             #ifdef PLATFORM_DEBUG
             // Вывод строки в uart о начале запуска, см. определение PLATFORM_DEBUG в user_config.h
             uart0_sendStr("ESP8266 platform starting...\r\n");

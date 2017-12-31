@@ -7,6 +7,9 @@
 #include "gpio.h"
 #include "user_config.h"
 #include "net_config.h"
+#include "tcp_streamer.h"
+#include "strbuf.h"
+#include "websrvr.h"
 
 static void at_tcpclient_connect_cb(void *arg);
 
@@ -31,7 +34,7 @@ static void ICACHE_FLASH_ATTR senddata()
         pCon->type = ESPCONN_TCP;
         pCon->state = ESPCONN_NONE;
         pCon->proto.tcp = (esp_tcp *)os_zalloc(sizeof(esp_tcp));
-        pCon->proto.tcp->local_port = 23;
+        pCon->proto.tcp->local_port = 80;
         espconn_regist_connectcb(pCon, at_tcpclient_connect_cb);
         // Можно зарегистрировать callback функцию, вызываемую при реконекте, но нам этого пока не нужно
         //espconn_regist_reconcb(pCon, at_tcpclient_recon_cb);
@@ -41,10 +44,23 @@ static void ICACHE_FLASH_ATTR senddata()
         espconn_regist_time(pCon, 60*60, 0);
 }
 
-
-
 static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
-{
+{        
+        for(tcp_streamer* current=streams;current;current=current->next)
+        {
+            if(current->mode==LongPoll && --current->timer == 0)
+            {
+                char buffer[512];
+
+                os_sprintf(buffer, "HTTP/1.1 200 OK\r\n\r\n"
+                                   "%d",
+                           getPinStatus()
+                           );
+                sendString(current,buffer);
+            }
+        }
+
+
         ++nTicks;
         // Структура с информацией о полученном, ip адресе клиента STA, маске подсети, шлюзе.
         struct ip_info ipConfig;
@@ -121,52 +137,90 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 
 static void ICACHE_FLASH_ATTR at_tcpclient_sent_cb(void *arg)
 {
+    struct espconn *pespconn = (struct espconn *)arg;
 
+    tcp_streamer* cur=find_item(streams,pespconn);
+
+    if(cur)
+    {
+        switch(cur->mode)
+        {
+            case File:
+                send_item(cur);
+            break;
+            case KillMe:
+                delete_item(&streams, cur);
+                espconn_disconnect(pespconn);
+
+                tcp_streamer* current=streams;
+                for(; current; current=current->next)
+                {
+                    if(current->mode == SendString || current->mode == SendFile)
+                    {
+                        if(current->mode==SendString)
+                        {
+                            current->mode=KillMe;
+                        }
+                        else
+                        {
+                            current->mode=File;
+                        }
+                        espconn_sent(current->pCon, current->stringBuf, current->len);
+                        os_free(current->stringBuf);
+                        break;
+                    }
+                }
+                if(!current)
+                {
+                    is_sending=false;
+                }
+            break;
+        }
+    }
 }
+
 
 static void ICACHE_FLASH_ATTR at_tcpclient_recv_cb(void *arg,char *pdata, unsigned short len)
 {
     struct espconn *pespconn = (struct espconn *)arg;
-    unsigned short i=0;
-    bool on;
-    bool mode=false;
-    for(;i<len;++i)
-    {
-        switch(pdata[i]++)
-        {
-            case '1':
-            {
-                mode=true;
-                on=true;
-                break;
-            }
-            case '2':
-            {
-                mode=true;
-                on=false;
-                break;
-            }
-        }
-    }
-    if(!mode)
-    {
-        return;
-    }
-    espconn_sent(pespconn,pdata,len);
-    if (on)
 
-    {
-        //Set GPIO2 to HIGH
-        gpio_output_set(BIT1, 0, BIT1, 0);
-        gpio_output_set(0, BIT3, BIT3, 0);
-    }
-    else
-    {
-            //Set GPIO2 to LOW
-            gpio_output_set(0, BIT1, BIT1, 0);
-            gpio_output_set(BIT3, 0, BIT3, 0);
-    }
+    const strBuf inputMessage={pdata,len};
 
+    bool changeMode;
+    unsigned char mode;
+    unsigned char channel;
+
+    doReply(&inputMessage,pespconn);
+
+//    switch(doReply(&inputMessage,&changeMode,&channel,&mode))
+//    {
+//        case 0:
+//            answer500(pespconn);
+//            espconn_disconnect(pespconn);
+//        break;
+//        case 3:
+//        case 1:
+//            answer200(pespconn);
+//            espconn_disconnect(pespconn);
+//        break;
+//        case 2:
+//            answerj0(pespconn);
+//        break;
+//    }
+
+
+//    if(changeMode)
+//    {
+//        const unsigned char bitno = channel ? BIT3 : BIT1;
+//        if(mode)
+//        {
+//            gpio_output_set(bitno, 0, bitno, 0);
+//        }
+//        else
+//        {
+//            gpio_output_set(0, bitno, bitno, 0);
+//        }
+//    }
 }
 
 
@@ -175,7 +229,7 @@ static void ICACHE_FLASH_ATTR at_tcpclient_discon_cb(void *arg)
         struct espconn *pespconn = (struct espconn *)arg;
         // Отключились, освобождаем память
        // os_free(pespconn->proto.tcp);
-        os_free(pespconn);
+       // os_free(pespconn);
         #ifdef PLATFORM_DEBUG
         uart0_sendStr("Disconnect callback\r\n");
         #endif
@@ -207,7 +261,7 @@ static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
         uart0_sendStr(payload);
         #endif
         // Отправляем данные
-        espconn_sent(pespconn, payload, strlen(payload));
+       // espconn_sent(pespconn, payload, strlen(payload));
 }
 
 

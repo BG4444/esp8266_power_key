@@ -38,7 +38,7 @@ EXTRA_INCDIR    = include
 LIBS		= c gcc hal pp phy net80211 lwip wpa main
 
 # compiler flags using during compilation of source files
-CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH
+CFLAGS		= -Os -g -O2 -Wpointer-arith -Wundef -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__  -DICACHE_FLASH -std=c11
 
 # linker flags used to generate the main object file
 LDFLAGS		= -nostdlib -Wl,--no-check-sections -u call_user_start -Wl,-static
@@ -129,7 +129,7 @@ $(FW_BASE):
 	$(Q) mkdir -p $@
 
 flash: $(FW_FILE_1) $(FW_FILE_2)
-	$(ESPTOOL) --port $(ESPPORT) --baud 9600 write_flash $(FW_FILE_1_ADDR) $(FW_FILE_1) $(FW_FILE_2_ADDR) $(FW_FILE_2)
+	$(ESPTOOL) --port $(ESPPORT) --baud 9600 write_flash $(FW_FILE_1_ADDR) $(FW_FILE_1) $(FW_FILE_2_ADDR) $(FW_FILE_2) 
 
 clean:
 	$(Q) rm -rf $(FW_BASE) $(BUILD_BASE)

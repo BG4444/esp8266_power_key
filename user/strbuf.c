@@ -1,6 +1,7 @@
 #include "strbuf.h"
 #include "ets_sys.h"
 #include <string.h>
+#include <mem.h>
 
 bool split(const strBuf *url, strBuf *res, const unsigned int count, const char chr)
 {
@@ -56,4 +57,19 @@ bool compare(const strBuf *a, const strBuf *b)
 uint32 minimum(uint32 a, uint32 b)
 {
     return (a>b) ? b : a;
+}
+
+void append(const strBuf *a, const strBuf *b, strBuf *ret)
+{
+    ret->len=a->len+b->len;
+    ret->begin=os_malloc(ret->len);
+    memcpy(ret->begin,a->begin,a->len);
+    memcpy(ret->begin+a->len,b->begin,b->len);
+}
+
+void copy(const strBuf *from, strBuf *to)
+{
+    to->len=from->len;
+    to->begin=os_malloc(to->len);
+    memcpy(to->begin,from->begin,to->len);
 }

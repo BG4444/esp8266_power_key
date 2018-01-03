@@ -5,6 +5,7 @@
 #include "os_type.h"
 #include "user_interface.h"
 #include "espconn.h"
+#include "strbuf.h"
 
 extern bool is_sending;
 
@@ -25,8 +26,7 @@ struct tcp_streamer_
 
     StreamMode mode;
     ///////////////////
-    char* stringBuf;
-    size_t len;
+    strBuf string;
     ///////////////////
     uint32_t timer;
     ///////////////////
@@ -43,9 +43,12 @@ void delete_item(tcp_streamer** current,tcp_streamer* item);
 
 tcp_streamer* find_item(tcp_streamer* current, struct espconn *pCon);
 
-void sendStringCreateStreamer(tcp_streamer **current, struct espconn *conn, char* buffer);
+void sendStringCreateStreamer(tcp_streamer **current, struct espconn *conn, const strBuf *buffer);
+void sendStringCreateStreamerNoCopy(tcp_streamer **current, struct espconn *conn, const strBuf *buffer);
 
-void sendString(tcp_streamer* stream,char *buffer);
-void sendFile(tcp_streamer* s,char *buffer, uint32_t pos, uint32_t tail);
+void sendString(tcp_streamer* stream, const strBuf *buffer);
+void sendStringNoCopy(tcp_streamer* stream, const strBuf *buffer);
+
+void sendFile(tcp_streamer* s, strBuf *buffer, uint32_t pos, uint32_t tail);
 
 #endif // TCP_STREAMER_H

@@ -40,7 +40,7 @@ size_t extract_size(tar_header *tar)
     return ret;
 }
 
-bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size)
+bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size, char** mtime)
 {
     *base = 0;
 
@@ -74,6 +74,7 @@ bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size)
           )
         {
             (*base)+=512;
+            *mtime=tar->mtime;
             return true;
         }
 
@@ -91,8 +92,6 @@ void send_item(tcp_streamer *s)
     uint32* buf=(uint32*)os_malloc(size);
 
     vaddr_flash_read512(s->pos, buf, size );
-
-
     espconn_sent(s->pCon, (char*)buf,size);
 
     s->pos+=size;

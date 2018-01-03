@@ -20,6 +20,7 @@ typedef struct _param
 
 extern tcp_streamer* streams;
 
+
 static const unsigned short m1=(unsigned short int)(-1);
 
 void answer500(struct espconn * conn);
@@ -32,6 +33,6 @@ unsigned short int findParam(const strBuf* name, const Param* params, const unsi
 
 void doReply(const strBuf* inputMessageAll,struct espconn *conn);
 
-void sendStatus(struct espconn* conn);
+void sendStatus(const char status, strBuf *send);
 
 #endif // WEBSRVR_H

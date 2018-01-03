@@ -9,26 +9,32 @@
 #include "gpio.h"
 #include "tcp_streamer.h"
 #include "tar.h"
+#include <string.h>
 
 tcp_streamer* streams = 0;
 
-static char reply404[]="HTTP/1.1 404 Not Found\r\n\r\n";
-static char reply200[]="HTTP/1.1 200 OK\r\n\r\n";
+static const char reply404[]="HTTP/1.1 404 Not Found\r\n\r\n";
+static const char reply200[]="HTTP/1.1 200 OK\r\n\r\n";
+static const char reply500[]="HTTP/1.1 500 Internal Server Error\r\n\r\nInternal Server Error\r\n";
+
+
+static const strBuf replyBuf200={reply200,sizeof(reply200)-1};
+static const strBuf replyBuf404={reply404,sizeof(reply404)-1};
+static const strBuf replyBuf500={reply500,sizeof(reply500)-1};
 
 void answer500(struct espconn *conn)
-{
-    static char reply[]="HTTP/1.1 500 Internal Server Error\r\n\r\nInternal Server Error\r\n";
-    sendStringCreateStreamer(&streams,conn,reply);
+{        
+    sendStringCreateStreamer(&streams,conn,&replyBuf500);
 }
 
 void answer404(struct espconn *conn)
-{   
-    sendStringCreateStreamer(&streams,conn,reply404);
+{       
+    sendStringCreateStreamer(&streams,conn,&replyBuf404);
 }
 
 void answer200(struct espconn *conn)
 {    
-    sendStringCreateStreamer(&streams,conn,reply200);
+    sendStringCreateStreamer(&streams,conn,&replyBuf200);
 }
 
 bool unpackParams(const strBuf *params, Param *ret, const unsigned short count)
@@ -90,11 +96,8 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
     const strBuf httpStr=   {"HTTP/1.1\r\n",10};
     const strBuf indexStr=    {"index.html",10};
     const strBuf statusStr=   {"status.cgi",10};
-    const strBuf _404Str=     {"404.html",8};
-    const strBuf switchStr=   {"/switch.cgi",11};
-    const strBuf pollStr=     {"poll.cgi",8};
-    const strBuf strMode =    {"mo",2};
-    const strBuf strChannel = {"ch",2};
+    const strBuf _404Str=     {"404.html",8};    
+    const strBuf pollStr=     {"poll.cgi",8};    
     const strBuf getStr=      {"GET",3};
     const strBuf putStr=      {"PUT",3};
     const strBuf strrnrn ={"\r\n\r\n",4};
@@ -143,6 +146,8 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
 
     uint32 tsize;
     uint32 spos;
+    char* mtime;
+
     bool status;
 
     //проверяем, что команда - это GET
@@ -155,7 +160,13 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
 
         if(compare(&path[1], &statusStr))
         {
-            sendStatus(conn);
+            const char status ='0'+getPinStatus();
+
+            strBuf send;
+
+            sendStatus(status,&send);
+
+            sendStringCreateStreamerNoCopy(&streams,conn,&send);
             return;
         }
 
@@ -169,7 +180,7 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
             s->timer=3;
             return;
         }
-        status = find_file_in_tar(&path[1],&spos,&tsize);
+        status = find_file_in_tar(&path[1],&spos,&tsize,&mtime);
     }
     else if(compare(&putStr, &requestString[0]))
     {
@@ -200,23 +211,20 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
 
             setPinStatus(data.begin[0]-'0');
 
-            answer200(conn);
 
-            char buffer[512];
+            strBuf send;
 
-            os_sprintf(buffer, "HTTP/1.1 200 OK\r\n\r\n"
-                               "%d",
-                       getPinStatus()
-                       );
+            sendStatus(data.begin[0],&send);
+
+            sendStringCreateStreamerNoCopy(&streams,conn,&send);
 
             for(tcp_streamer* cur=streams; cur; cur=cur->next)
             {
                 if(cur->mode==LongPoll)
                 {
-                    sendString(cur,buffer);
+                    sendString(cur,&send);
                 }
             }
-
 
             return;
         }
@@ -225,7 +233,7 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
 
     if(!status)
     {
-        if(!find_file_in_tar(&_404Str,&spos,&tsize))
+        if(!find_file_in_tar(&_404Str,&spos,&tsize,mtime))
         {
             answer500(conn);
             return;
@@ -238,22 +246,19 @@ void doReply(const strBuf *inputMessageAll, struct espconn* conn)
 
     if(status)
     {        
-        sendFile(s, reply200, spos, spos+tsize);
+
+        sendFile(s, &replyBuf200, spos, spos+tsize);
     }
     else
     {
-        sendFile(s, reply404, spos, spos+tsize);
+        sendFile(s, &replyBuf404, spos, spos+tsize);
     }
 
 }
 
-void sendStatus(struct espconn *conn)
+void sendStatus(const char status, strBuf* send)
 {
-    char buffer[512];
+    strBuf value={&status,1};
 
-    os_sprintf(buffer, "HTTP/1.1 200 OK\r\n\r\n"
-                       "%d",
-               getPinStatus()
-               );
-    sendStringCreateStreamer(&streams,conn,buffer);
+    append(&replyBuf200,&value,send);
 }

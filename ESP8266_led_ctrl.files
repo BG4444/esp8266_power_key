@@ -1,3 +1,5 @@
+user/strbuf.c
+user/strbuf.h
 user/websrvr.c
 Makefile
 user/net_config.h

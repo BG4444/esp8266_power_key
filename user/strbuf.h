@@ -16,4 +16,7 @@ bool split(const strBuf* url, strBuf* res, const unsigned int count, const char 
 
 uint32 minimum(uint32 a, uint32 b);
 
+void append(const strBuf* a, const strBuf* b, strBuf *ret);
+void copy(const strBuf* from, strBuf* to);
+
 #endif // STRBUF_H

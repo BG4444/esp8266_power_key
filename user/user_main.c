@@ -50,13 +50,11 @@ static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
         {
             if(current->mode==LongPoll && --current->timer == 0)
             {
-                char buffer[512];
+                const char status ='0'+getPinStatus();
+                strBuf send;
 
-                os_sprintf(buffer, "HTTP/1.1 200 OK\r\n\r\n"
-                                   "%d",
-                           getPinStatus()
-                           );
-                sendString(current,buffer);
+                sendStatus(status,&send);
+                sendStringNoCopy(current,&send);
             }
         }
 
@@ -165,8 +163,8 @@ static void ICACHE_FLASH_ATTR at_tcpclient_sent_cb(void *arg)
                         {
                             current->mode=File;
                         }
-                        espconn_sent(current->pCon, current->stringBuf, current->len);
-                        os_free(current->stringBuf);
+                        espconn_sent(current->pCon, current->string.begin, current->string.len);
+                        os_free(current->string.begin);
                         break;
                     }
                 }

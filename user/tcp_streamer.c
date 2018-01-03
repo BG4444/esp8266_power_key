@@ -1,6 +1,7 @@
 #include "mem.h"
 #include "tcp_streamer.h"
 
+
 bool is_sending = false;
 
 tcp_streamer *add_item(tcp_streamer **current)
@@ -39,7 +40,7 @@ tcp_streamer *find_item(tcp_streamer *current,struct  espconn *pCon)
 }
 
 
-void sendStringCreateStreamer(tcp_streamer **current, struct espconn* conn,char *buffer)
+void sendStringCreateStreamer(tcp_streamer **current, struct espconn* conn, const strBuf *buffer)
 {
     tcp_streamer* s = add_item(current);
 
@@ -48,37 +49,38 @@ void sendStringCreateStreamer(tcp_streamer **current, struct espconn* conn,char 
     sendString(s,buffer);
 }
 
-void sendString(tcp_streamer* s,char *buffer)
+void sendStringCreateStreamerNoCopy(tcp_streamer **current, struct espconn* conn, const strBuf *buffer)
 {
+    tcp_streamer* s = add_item(current);
 
-    const size_t len=strlen(buffer);
+    s->pCon=conn;
 
+    sendStringNoCopy(s,buffer);
+}
+
+
+void sendString(tcp_streamer* s,const strBuf *buffer)
+{
     if(is_sending)
     {
         s->mode=SendString;
-        s->stringBuf=os_malloc(len);
-        memcpy(s->stringBuf,buffer, len);
-        s->len=len;
+        copy(buffer,&s->string);
     }
     else
     {
         s->mode=KillMe;
         is_sending=true;
-        espconn_sent(s->pCon,buffer,strlen(buffer));
+        espconn_sent(s->pCon,buffer->begin,buffer->len);
     }
 }
 
-void sendFile(tcp_streamer* s,char *buffer, uint32_t pos, uint32_t tail)
+void sendFile(tcp_streamer* s,strBuf *buffer, uint32_t pos, uint32_t tail)
 {
-    const size_t len=strlen(buffer);
-
     if(is_sending)
     {
         s->mode=SendFile;
 
-        s->stringBuf=os_malloc(len);
-        memcpy(s->stringBuf,buffer, len);
-        s->len=len;
+        copy(buffer,&s->string);
 
         s->pos=pos;
         s->tail=tail;
@@ -92,6 +94,22 @@ void sendFile(tcp_streamer* s,char *buffer, uint32_t pos, uint32_t tail)
 
         is_sending=true;
 
-        espconn_sent(s->pCon,buffer,strlen(buffer));
+        espconn_sent(s->pCon,buffer->begin,buffer->len);
+    }
+}
+
+
+void sendStringNoCopy(tcp_streamer *s, const strBuf *buffer)
+{
+    if(is_sending)
+    {
+        s->mode=SendString;
+        s->string=*buffer;
+    }
+    else
+    {
+        s->mode=KillMe;
+        is_sending=true;
+        espconn_sent(s->pCon,buffer->begin,buffer->len);
     }
 }

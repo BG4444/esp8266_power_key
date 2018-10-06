@@ -18,21 +18,21 @@ typedef struct _param
 } Param;
 
 
-extern tcp_streamer* streams;
-
+extern tcp_streamer* streamsOut;
+extern tcp_streamer* streamsInp;
 
 static const unsigned short m1=(unsigned short int)(-1);
 
-void answer500(struct espconn * conn);
-
-void answer200(struct espconn* conn);
+void answer500(struct espconn * conn, const size_t code);
 
 bool unpackParams(const strBuf* params, Param* ret, const unsigned short int count);
 
 unsigned short int findParam(const strBuf* name, const Param* params, const unsigned short int count);
 
-void doReply(const strBuf* inputMessageAll,struct espconn *conn);
+bool doReply(const strBuf* inputMessageAll,struct espconn *conn);
 
-void sendStatus(const char status, strBuf *send);
+void sendStatus(char status, strBuf *send);
+
+void makeHTTPReply(const strBuf* statusString, const size_t contentSize, const strBuf *etag, strBuf *out);
 
 #endif // WEBSRVR_H

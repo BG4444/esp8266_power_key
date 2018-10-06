@@ -10,14 +10,35 @@
 #include "tcp_streamer.h"
 #include "strbuf.h"
 #include "websrvr.h"
+#include "tar.h"
 
 static void at_tcpclient_connect_cb(void *arg);
 
 static volatile os_timer_t WiFiLinker;
 
-static volatile unsigned int nTicks=0;
-static volatile unsigned int nClients=0;
+volatile unsigned int nClients=0;
 bool connected=false;
+
+static void ICACHE_FLASH_ATTR at_tcpclient_recon_cb(void *arg, sint8 err)
+{
+    struct espconn *pespconn = (struct espconn *)arg;
+
+    tcp_streamer* cur1=find_item(streamsOut,pespconn);
+
+    if(cur1)
+    {
+        delete_tcp_streamer_item(&streamsOut, cur1);
+    }
+
+    tcp_streamer* cur2=find_item(streamsInp,pespconn);
+
+    if(cur2)
+    {
+        delete_tcp_streamer_item(&streamsInp, cur2);
+    }
+
+     LOG_CLIENT("TCP error",pespconn);
+}
 
 static void ICACHE_FLASH_ATTR senddata()
 {
@@ -37,7 +58,7 @@ static void ICACHE_FLASH_ATTR senddata()
         pCon->proto.tcp->local_port = 80;
         espconn_regist_connectcb(pCon, at_tcpclient_connect_cb);
         // Можно зарегистрировать callback функцию, вызываемую при реконекте, но нам этого пока не нужно
-        //espconn_regist_reconcb(pCon, at_tcpclient_recon_cb);
+        espconn_regist_reconcb(pCon, at_tcpclient_recon_cb);
         // Вывод отладочной информации
         // Установить соединение с TCP-сервером
         espconn_accept(pCon);
@@ -46,7 +67,7 @@ static void ICACHE_FLASH_ATTR senddata()
 
 static void ICACHE_FLASH_ATTR wifi_check_ip(void *arg)
 {        
-        for(tcp_streamer* current=streams;current;current=current->next)
+        for(tcp_streamer* current=streamsOut;current;current=current->next)
         {
             if(current->mode==LongPoll && --current->timer == 0)
             {
@@ -137,7 +158,7 @@ static void ICACHE_FLASH_ATTR at_tcpclient_sent_cb(void *arg)
 {
     struct espconn *pespconn = (struct espconn *)arg;
 
-    tcp_streamer* cur=find_item(streams,pespconn);
+    tcp_streamer* cur=find_item(streamsOut,pespconn);
 
     if(cur)
     {
@@ -146,27 +167,49 @@ static void ICACHE_FLASH_ATTR at_tcpclient_sent_cb(void *arg)
             case File:
                 send_item(cur);
             break;
-            case KillMe:
-                delete_item(&streams, cur);
-                espconn_disconnect(pespconn);
+            case LogDump:
+                espconn_sent(cur->pCon,  cur->logPos->message.begin, cur->logPos->message.len);
 
-                tcp_streamer* current=streams;
+                cur->logLen-=cur->logPos->message.len;
+
+                if(cur->logLen)
+                {
+                    cur->logPos=cur->logPos->next;
+                }
+                else
+                {
+                    cur->mode=KillMeNoDisconnect;
+                }
+
+
+            break;
+            case KillMe:
+                espconn_disconnect(pespconn);
+            case KillMeNoDisconnect:
+                delete_tcp_streamer_item(&streamsOut, cur);
+                LOG_CLIENT("Query done",pespconn);
+
+
+                tcp_streamer* current=streamsOut;
                 for(; current; current=current->next)
                 {
-                    if(current->mode == SendString || current->mode == SendFile)
+                    switch(current->mode)
                     {
-                        if(current->mode==SendString)
-                        {
-                            current->mode=KillMe;
-                        }
-                        else
-                        {
-                            current->mode=File;
-                        }
-                        espconn_sent(current->pCon, current->string.begin, current->string.len);
-                        os_free(current->string.begin);
+                        case SendString:
+                            current->mode=KillMeNoDisconnect;
                         break;
+                        case SendFile:
+                            current->mode=File;
+                        break;
+                        case LogDumpHeaders:
+                            current->mode=LogDump;
+                        break;
+                        default:
+                            continue;
                     }
+                    espconn_sent(current->pCon, current->string.begin, current->string.len);
+                    log_free(current->string.begin);
+                    break;
                 }
                 if(!current)
                 {
@@ -182,43 +225,47 @@ static void ICACHE_FLASH_ATTR at_tcpclient_recv_cb(void *arg,char *pdata, unsign
 {
     struct espconn *pespconn = (struct espconn *)arg;
 
+    tcp_streamer* f=find_item(streamsInp,pespconn);
+
     const strBuf inputMessage={pdata,len};
 
-    bool changeMode;
-    unsigned char mode;
-    unsigned char channel;
+    if(f)
+    {
+        strBuf tbuf;
+        append(2,&tbuf, &f->string, &inputMessage);
+        log_free(f->string.begin);
 
-    doReply(&inputMessage,pespconn);
+        if(doReply(&tbuf, pespconn))
+        {
+            f->string=tbuf;
+            LOG_CLIENT("New partial query part",pespconn);
+        }
+        else
+        {
+            log_free(tbuf.begin);
+            delete_tcp_streamer_item(&streamsInp,f);
+            LOG_CLIENT("New partial query assembled",pespconn);
+        }
+    }
+    else
+    {
+        if(doReply(&inputMessage,pespconn))
+        {
+            LOG_CLIENT("New partial query",pespconn);
 
-//    switch(doReply(&inputMessage,&changeMode,&channel,&mode))
-//    {
-//        case 0:
-//            answer500(pespconn);
-//            espconn_disconnect(pespconn);
-//        break;
-//        case 3:
-//        case 1:
-//            answer200(pespconn);
-//            espconn_disconnect(pespconn);
-//        break;
-//        case 2:
-//            answerj0(pespconn);
-//        break;
-//    }
+            tcp_streamer* s = add_tcp_streamer_item(&streamsInp);
 
+            s->pCon=pespconn;
 
-//    if(changeMode)
-//    {
-//        const unsigned char bitno = channel ? BIT3 : BIT1;
-//        if(mode)
-//        {
-//            gpio_output_set(bitno, 0, bitno, 0);
-//        }
-//        else
-//        {
-//            gpio_output_set(0, bitno, bitno, 0);
-//        }
-//    }
+            s->mode=Head;
+
+            copy(&inputMessage,&s->string);
+        }
+        else
+        {
+            LOG_CLIENT("New full query",pespconn);
+        }
+    }
 }
 
 
@@ -226,13 +273,16 @@ static void ICACHE_FLASH_ATTR at_tcpclient_discon_cb(void *arg)
 {
         struct espconn *pespconn = (struct espconn *)arg;
         // Отключились, освобождаем память
-       // os_free(pespconn->proto.tcp);
-       // os_free(pespconn);
+       // log_free(pespconn->proto.tcp);
+       // log_free(pespconn);
         #ifdef PLATFORM_DEBUG
         uart0_sendStr("Disconnect callback\r\n");
         #endif
 
         --nClients;
+
+        LOG_CLIENT("Client disconnect",pespconn);
+
 }
 
 
@@ -251,15 +301,11 @@ static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
 
         // callback функция, вызываемая после отключения
         espconn_regist_disconcb(pespconn, at_tcpclient_discon_cb);
-        char payload[512];
+
         ++nClients;
-        // Подготавливаем строку данных, будем отправлять MAC адрес ESP8266 в режиме AP и добавим к нему строку ESP8266
-        os_sprintf(payload, "TIME: %ld ncients: %ld LinkCnt: %ld\r\n", nTicks, nClients, pespconn->link_cnt                   );
-        #ifdef PLATFORM_DEBUG
-        uart0_sendStr(payload);
-        #endif
-        // Отправляем данные
-       // espconn_sent(pespconn, payload, strlen(payload));
+
+        LOG_CLIENT("Client connected",pespconn);
+
 }
 
 
@@ -278,20 +324,19 @@ void BtnInit()
 //Init function 
 void ICACHE_FLASH_ATTR user_init()
 {
-            #ifdef PLATFORM_DEBUG
-            // Вывод строки в uart о начале запуска, см. определение PLATFORM_DEBUG в user_config.h
-            uart0_sendStr("ESP8266 platform starting...\r\n");
-            #endif
+            MAKE_STR_BUF(systemInit,"Init system\n");
+            MAKE_STR_BUF(systemInitDone,"Init done\n");
+            MAKE_STR_BUF(wifiConfigSet,"WiFi SET\n");
+
+            add_message(&systemInit, nTicks);
+
             // Структура с информацией о конфигурации STA (в режиме клиента AP)
             struct station_config stationConfig;
-            char info[150];
+
             // Проверяем если платы была не в режиме клиента AP, то переводим её в этот режим
             // В версии SDK ниже 0.9.2 после wifi_set_opmode нужно было делать system_restart
             if(wifi_get_opmode() != STATION_MODE)
             {
-                    #ifdef PLATFORM_DEBUG
-                    uart0_sendStr("ESP8266 not in STATION mode, restarting in STATION mode...\r\n");
-                    #endif
                     wifi_set_opmode(STATION_MODE);
             }
             // Если плата в режиме STA, то устанавливаем конфигурацию, имя AP, пароль, см. user_config.h
@@ -306,18 +351,9 @@ void ICACHE_FLASH_ATTR user_init()
                     os_sprintf(stationConfig.password, "%s", WIFI_CLIENTPASSWORD);
                     wifi_station_set_config(&stationConfig);
             }
+
+            add_message(&wifiConfigSet, nTicks);
             // Для отладки выводим в uart данные о настройке режима STA
-            #ifdef PLATFORM_DEBUG
-            if(wifi_get_opmode() == STATION_MODE)
-            {
-                    wifi_station_get_config(&stationConfig);
-                    os_sprintf(info,"OPMODE: %u, SSID: %s, PASSWORD: %s\r\n",
-                            wifi_get_opmode(),
-                            stationConfig.ssid,
-                            stationConfig.password);
-                    uart0_sendStr(info);
-            }
-            #endif
 
             // Запускаем таймер проверки соединения по Wi-Fi, проверяем соединение раз в 1 сек., если соединение установлено, то запускаем TCP-клиент и отправляем тестовую строку.
             os_timer_disarm(&WiFiLinker);
@@ -326,7 +362,5 @@ void ICACHE_FLASH_ATTR user_init()
             // Инициализируем GPIO,
             BtnInit();
             // Выводим сообщение о успешном запуске
-            #ifdef PLATFORM_DEBUG
-            uart0_sendStr("ESP8266 platform started!\r\n");
-            #endif
+            add_message(&systemInitDone, nTicks);
 }

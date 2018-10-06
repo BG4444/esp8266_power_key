@@ -1,3 +1,6 @@
+user/linked_list.h
+user/logger.c
+user/logger.h
 user/strbuf.c
 user/strbuf.h
 user/websrvr.c

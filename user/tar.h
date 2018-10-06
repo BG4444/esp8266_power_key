@@ -29,8 +29,6 @@ typedef struct tar_header_
 
 void vaddr_flash_read512(uint32 base, uint32* buf, uint32 size);
 
-size_t extract_size(tar_header* tar);
-
-bool find_file_in_tar(const strBuf *name, uint32* base, uint32* size, char **mtime);
+bool find_file_in_tar(const strBuf *name, uint32* base, uint32* size, strBuf *mtime);
 void send_item(tcp_streamer* s);
 #endif // TAR_H

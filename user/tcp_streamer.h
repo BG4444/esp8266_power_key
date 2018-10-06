@@ -6,6 +6,8 @@
 #include "user_interface.h"
 #include "espconn.h"
 #include "strbuf.h"
+#include "linked_list.h"
+#include "logger.h"
 
 extern bool is_sending;
 
@@ -15,7 +17,11 @@ typedef enum StreamMode_
     LongPoll,
     KillMe,
     SendString,
-    SendFile
+    SendFile,
+    KillMeNoDisconnect,
+    Head,
+    LogDump,
+    LogDumpHeaders
 } StreamMode;
 
 struct tcp_streamer_
@@ -32,14 +38,17 @@ struct tcp_streamer_
     ///////////////////
     uint32 pos;
     uint32 tail;
+    ///////////////////
+    size_t logLen;
+    log_entry* logPos;
 };
 
 typedef struct tcp_streamer_ tcp_streamer;
 
+dADD_ITEM(tcp_streamer);
+dDELETE_ITEM(tcp_streamer);
 
-tcp_streamer* add_item(tcp_streamer** current);
-
-void delete_item(tcp_streamer** current,tcp_streamer* item);
+void delete_tcp_streamer_item(tcp_streamer** current,const tcp_streamer* item);
 
 tcp_streamer* find_item(tcp_streamer* current, struct espconn *pCon);
 
@@ -49,6 +58,6 @@ void sendStringCreateStreamerNoCopy(tcp_streamer **current, struct espconn *conn
 void sendString(tcp_streamer* stream, const strBuf *buffer);
 void sendStringNoCopy(tcp_streamer* stream, const strBuf *buffer);
 
-void sendFile(tcp_streamer* s, strBuf *buffer, uint32_t pos, uint32_t tail);
+void sendFileNoCopy(tcp_streamer* s, strBuf *buffer, uint32_t pos, uint32_t tail);
 
 #endif // TCP_STREAMER_H

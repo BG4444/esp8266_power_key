@@ -2,6 +2,7 @@
 #include "ets_sys.h"
 #include <string.h>
 #include <mem.h>
+#include <stdarg.h>
 
 bool split(const strBuf *url, strBuf *res, const unsigned int count, const char chr)
 {
@@ -58,18 +59,73 @@ uint32 minimum(uint32 a, uint32 b)
 {
     return (a>b) ? b : a;
 }
-
-void append(const strBuf *a, const strBuf *b, strBuf *ret)
-{
-    ret->len=a->len+b->len;
-    ret->begin=os_malloc(ret->len);
-    memcpy(ret->begin,a->begin,a->len);
-    memcpy(ret->begin+a->len,b->begin,b->len);
-}
-
 void copy(const strBuf *from, strBuf *to)
 {
     to->len=from->len;
-    to->begin=os_malloc(to->len);
+    to->begin=log_malloc(to->len);
     memcpy(to->begin,from->begin,to->len);
+}
+
+void mid(const strBuf *from, strBuf *to, size_t begin, const size_t len)
+{
+    to->begin=from->begin+begin;
+    to->len=len;
+}
+
+size_t bufToInt(const strBuf *in)
+{
+    size_t ret=0;
+    size_t mult=1;
+    for(size_t pos=in->len; pos--  ; )
+    {
+        ret+= (in->begin[pos]-'0') * mult;
+        mult=mult<<3;
+    }
+    return ret;
+}
+
+void intToBuf(size_t in, strBuf *out)
+{
+    size_t cp_in= in ? in : 1;
+    for(out->len = 0; cp_in; ++out->len,cp_in/=10 );
+    out->begin=log_malloc(out->len);
+    for(size_t i=out->len;i--; in/=10)
+    {
+        out->begin[i] = (in % 10) + '0';
+    }
+}
+
+void append(const size_t count, strBuf *ret, ...)
+{
+    ret->len=0;
+
+    va_list list;
+    va_start(list,ret);
+
+    for(size_t i=0; i<count; ++i)
+    {
+        strBuf* t=va_arg(list, strBuf*);
+        ret->len+=t->len;
+    }
+
+    va_end(list);
+
+    va_start(list,ret);
+
+
+
+
+    ret->begin=(char*)log_malloc(ret->len);
+
+
+    char* pos=ret->begin;
+
+    for(size_t i=0; i< count;++i)
+    {
+        strBuf* t=va_arg(list, strBuf*);
+        memcpy(pos,t->begin,t->len);
+        pos+=t->len;
+    }
+
+    va_end(list);
 }

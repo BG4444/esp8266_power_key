@@ -23,24 +23,13 @@ void vaddr_flash_read512(uint32 base, uint32 *buf, uint32 size)
     }
 }
 
-size_t extract_size(tar_header *tar)
+void paramToStrBuf(char* param,const size_t param_len,strBuf* out)
 {
-    size_t ret=0;
-    size_t mult=1;
-    int pos=11;
-    for(; pos > 0 ; --pos)
-    {
-        if(tar->size[pos]!=' ')
-        {
-            ret+=mult*(tar->size[pos]-'0');
-            mult=mult<<3;
-        }
-    }
-
-    return ret;
+    const char* end=memccpy(out->begin,param,' ',param_len);
+    out->len = end ? end-out->begin - 1 : param_len;
 }
 
-bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size, char** mtime)
+bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size, strBuf* mtime)
 {
     *base = 0;
 
@@ -62,9 +51,15 @@ bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size, char** mtim
         if(!b)
         {
             return false;
-        }
+        }        
 
-        *size=extract_size(tar);
+        strBuf szBuf;
+        strBuf chars[sizeof(tar->size)];
+        szBuf.begin=chars;
+
+        paramToStrBuf(tar->size, sizeof(tar->size),&szBuf);
+
+        *size=bufToInt(&szBuf);
 
         if(strncmp(tar->name,name->begin,minimum(
                                                     sizeof(tar->name),
@@ -73,8 +68,8 @@ bool find_file_in_tar(const strBuf*name, uint32 *base, uint32 *size, char** mtim
                   )==0
           )
         {
-            (*base)+=512;
-            *mtime=tar->mtime;
+            (*base)+=512;           
+            paramToStrBuf(tar->mtime, sizeof(tar->mtime),mtime);
             return true;
         }
 
@@ -89,7 +84,7 @@ void send_item(tcp_streamer *s)
 {
     const uint32 size=minimum(512, s->tail - s->pos);
 
-    uint32* buf=(uint32*)os_malloc(size);
+    uint32* buf=(uint32*)log_malloc(size);
 
     vaddr_flash_read512(s->pos, buf, size );
     espconn_sent(s->pCon, (char*)buf,size);
@@ -97,8 +92,8 @@ void send_item(tcp_streamer *s)
     s->pos+=size;
     if(s->pos==s->tail)
     {
-        s->mode=KillMe;
+        s->mode=KillMeNoDisconnect;
     }
 
-    os_free(buf);
+    log_free(buf);
 }

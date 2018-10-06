@@ -8,7 +8,7 @@
 #define ADD_ITEM(type)     dADD_ITEM(type)\
                            {\
                                 for(;*current;current=& (*current)->next);\
-                                *current=(type*)log_malloc(sizeof(type));\
+                                *current=(type*)os_malloc(sizeof(type));\
                                 (*current)->next=0;\
                                 return *current;\
                            }
@@ -17,7 +17,7 @@
                            {\
                                 for(;*current!=item;current=& (*current)->next);\
                                 *current=(*current)->next;\
-                                log_free(item);\
+                                os_free(item);\
                            }
 
 #endif // LINKED_LIST_H

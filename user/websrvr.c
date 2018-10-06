@@ -14,7 +14,6 @@
 
 tcp_streamer* streamsOut = 0;
 tcp_streamer* streamsInp = 0;
-tcp_streamer* logStream = 0;
 
 MAKE_STR_BUF(status200,"200 OK");
 MAKE_STR_BUF(status404,"Not Found");
@@ -199,6 +198,12 @@ bool doReply(const strBuf *inputMessageAll, struct espconn* conn)
 
             s->logLen=getCurrentLength();
             s->logPos=log_entries;
+            log_entries=0;
+
+            MAKE_STR_BUF(logClean,"Log cleaned\n");
+
+            add_message(&logClean,nTicks);
+
 
             makeHTTPReply(&status200,s->logLen,0,&s->string );
 

@@ -40,7 +40,7 @@ struct tcp_streamer_
     uint32 tail;
     ///////////////////
     size_t logLen;
-    log_entry* logPos;
+    log_entry* logPos;        
 };
 
 typedef struct tcp_streamer_ tcp_streamer;

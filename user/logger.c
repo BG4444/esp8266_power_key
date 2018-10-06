@@ -14,6 +14,20 @@ void add_message(const strBuf *mess, const size_t time)
 
     entry ->message=*mess;
     entry ->timestamp=time;
+
+
+    char buf[512];
+    os_sprintf(buf,"Memory free is %u\n",system_get_free_heap_size());
+
+
+    strBuf newClient={buf,strlen(buf)};
+
+    entry = add_log_entry_item(&log_entries);
+
+    entry ->message=*mess;
+    entry ->timestamp=time;
+
+    copy(&newClient,&entry->message);
 }
 
 
@@ -32,10 +46,10 @@ size_t getCurrentLength()
 
 void registerMemoryGet(size_t size)
 {
-    mem_usage+=size;
-    char buf[512];
-    os_sprintf(buf,"Memory free is %u",system_get_free_heap_size());
-    add_log_buffer(buf);
+//    mem_usage+=size;
+//    char buf[512];
+//    os_sprintf(buf,"Memory free is %u",system_get_free_heap_size());
+//    add_log_buffer(buf);
 }
 
 
@@ -61,7 +75,7 @@ void *log_malloc(const size_t size)
 void log_free(void *entry)
 {
     registerMemoryGet(0);
-    log_free(entry);
+    os_free(entry);
 }
 
 ADD_ITEM(log_entry)

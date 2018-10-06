@@ -62,7 +62,7 @@ uint32 minimum(uint32 a, uint32 b)
 void copy(const strBuf *from, strBuf *to)
 {
     to->len=from->len;
-    to->begin=log_malloc(to->len);
+    to->begin=os_malloc(to->len);
     memcpy(to->begin,from->begin,to->len);
 }
 
@@ -99,33 +99,32 @@ void append(const size_t count, strBuf *ret, ...)
 {
     ret->len=0;
 
-    va_list list;
-    va_start(list,ret);
+    va_list list1;
+    va_list list2;
+    va_start(list1,ret);
+    va_copy(list2,list1);
 
     for(size_t i=0; i<count; ++i)
     {
-        strBuf* t=va_arg(list, strBuf*);
+        strBuf* t=va_arg(list1, strBuf*);
         ret->len+=t->len;
     }
 
-    va_end(list);
-
-    va_start(list,ret);
+    va_end(list1);
 
 
 
-
-    ret->begin=(char*)log_malloc(ret->len);
+    ret->begin=(char*)os_malloc(ret->len);
 
 
     char* pos=ret->begin;
 
     for(size_t i=0; i< count;++i)
     {
-        strBuf* t=va_arg(list, strBuf*);
+        strBuf* t=va_arg(list2, strBuf*);
         memcpy(pos,t->begin,t->len);
         pos+=t->len;
     }
 
-    va_end(list);
+    va_end(list2);
 }

@@ -58,7 +58,7 @@ static void ICACHE_FLASH_ATTR senddata()
         pCon->proto.tcp->local_port = 80;
         espconn_regist_connectcb(pCon, at_tcpclient_connect_cb);
         // Можно зарегистрировать callback функцию, вызываемую при реконекте, но нам этого пока не нужно
-        espconn_regist_reconcb(pCon, at_tcpclient_recon_cb);
+    //    espconn_regist_reconcb(pCon, at_tcpclient_recon_cb);
         // Вывод отладочной информации
         // Установить соединение с TCP-сервером
         espconn_accept(pCon);
@@ -168,16 +168,20 @@ static void ICACHE_FLASH_ATTR at_tcpclient_sent_cb(void *arg)
                 send_item(cur);
             break;
             case LogDump:
-                espconn_sent(cur->pCon,  cur->logPos->message.begin, cur->logPos->message.len);
-
+                espconn_sent(cur->pCon,  cur->logPos->message.begin, cur->logPos->message.len);                
                 cur->logLen-=cur->logPos->message.len;
 
+                const log_entry* tnext=cur->logPos->next;
+
+                log_free(cur->logPos->message.begin);
+                log_free(cur->logPos);
+
                 if(cur->logLen)
-                {
-                    cur->logPos=cur->logPos->next;
+                {                    
+                    cur->logPos=tnext;
                 }
                 else
-                {
+                {                    
                     cur->mode=KillMeNoDisconnect;
                 }
 
@@ -228,6 +232,8 @@ static void ICACHE_FLASH_ATTR at_tcpclient_recv_cb(void *arg,char *pdata, unsign
     tcp_streamer* f=find_item(streamsInp,pespconn);
 
     const strBuf inputMessage={pdata,len};
+
+
 
     if(f)
     {
@@ -291,7 +297,10 @@ static void ICACHE_FLASH_ATTR at_tcpclient_connect_cb(void *arg)
 {
         struct espconn *pespconn = (struct espconn *)arg;
         #ifdef PLATFORM_DEBUG
-        uart0_sendStr("TCP client connect\r\n");
+        uart0_sen mem_usage+=size;
+        char buf[512];
+        os_sprintf(buf,"Memory free is %u",system_get_free_heap_size());
+        add_log_buffer(buf);dStr("TCP client connect\r\n");
         #endif
 
         espconn_regist_recvcb(pespconn, at_tcpclient_recv_cb);
